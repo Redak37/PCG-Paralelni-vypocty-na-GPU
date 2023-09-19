@@ -1,0 +1,105 @@
+Paralelní programování na GPU (PCG 2021)
+Projekt c. 1 (cuda)
+Login: xducho07
+
+
+
+
+Krok 0: základní implementace
+=============================
+Velikost dat    	čas [s]
+ 5 * 10 * 512            4.67
+ 5 * 11 * 512            5.10
+ 5 * 12 * 512            5.57
+ 5 * 13 * 512            6.02
+ 5 * 14 * 512            6.53
+ 5 * 15 * 512            6.97
+ 5 * 16 * 512            7.40
+ 5 * 17 * 512            10.47
+ 5 * 18 * 512            11.06
+ 5 * 19 * 512            11.67
+ 5 * 20 * 512            12.36
+ 5 * 21 * 512            12.97
+ 5 * 22 * 512            13.52
+ 5 * 23 * 512            14.20
+ 5 * 24 * 512            14.80
+ 5 * 25 * 512            15.41
+
+
+Vyskytla se nějaká anomálie v datech
+Pokud ano, vysvětlete:
+
+Při spuštění s velikostí 5 * 17 * 512 je doba běhu o téměř polovinu větší než při 5 * 16 * 512, to bude pravděpodobně způsobeno tím, že Tesla V100 má 80 SM procesorů a při velikosti 512 vláken na blok tak začne být větší počet bloků, než kolik má karta SM procesorů. To jsem si ověřil zvětšením počtu vláken na vlok z 512 na 544, aby bylo využito právě 80 bloků, čas se snížil na 8s.
+
+
+Krok 1: optimalizace kódu
+=====================
+Došlo ke zrychlení? Ano
+
+Popište hlavní důvody:
+ - Zmenšený počet přístupů do globální paměti (načítání dat zredukováno o 43 %)
+ - Není nutné čekat na synchronizaci dat před výpočtem nových souřadnic bodů
+ - Menší overhead spouštění kernelů
+ - 
+
+Porovnejte metriky s předchozím krokem:
+              Kernel  flop_sp_efficiency  sm_efficiency  gld_transactions  stall_memory_dependency  gld_throughput    flop_count_sp  flop_count_sp_add  flop_count_sp_fma  flop_count_sp_mul  flop_count_sp_special
+                                     %              %                                          %            GB/s
+calculate_collision_               28.61          88.35         384056000                    16.00     1573.512408    3.2768192e+10  1.22880000000e+10         8192000000         4096192000                      0
+calculate_gravitatio               43.36          89.00         512048000                    11.55      652.232069    1.5974227e+11  2.45760000000e+10  5.73432320000e+10  2.04798080000e+10             8191872000
+update_particle(t_pa                0.43          27.08             48000                    64.89      348.565174           384000                  0             192000                  0                      0
+___________________________________________________________________________________________________________________________________________________________________________________________________________________
+calculate_velocity(t               43.09          87.56         512056000                     3.75      665.206656    1.5564672e+11  2.04800640000e+10  5.73434240000e+10  2.04798080000e+10             8191872000
+
+
+Krok 2: sdílená paměť
+=====================
+Došlo ke zrychlení?
+Ne
+
+Zdůvodněte:
+Použití sdílené paměti výpočet ve skutečnosti mírně zpomalilo, to si vysvětluji tím, že jak vidno z profilování, čekání na globální paměť bylo již velmi nízké. Čekání se sice podařilo takřka vynulovat, ale kvůli práci navíc se čas již nezlepší.
+
+Porovnejte metriky s předchozím krokem:
+ Step  shared_load_transactions  flop_sp_efficiency  sm_efficiency  gld_transactions  stall_memory_dependency 
+                                                %              %                                          % 
+step1                         0               43.09          87.56         512056000                     3.74
+step2                 512025294               42.37          86.27           7056000                     0.07
+
+
+Krok 5: analýza výkonu
+======================
+500 kroků:
+N            čas CPU [s]    čas GPU [s]    propustnost paměti [MB/s]    výkon [MFLOPS]    zrychlení [-]
+2^1 * 1024    18.7467         0.26798              6770                      297303            70.0     (blok 32)
+2^2 * 1024    75.0189         0.48617              6900                      655585           154.3     (blok 64)
+2^3 * 1024    291.591         0.90723              8120                     1405362           321.4     (blok 128)
+2^4 * 1024    1196.23         1.91623              8540                     2692724           624.3     (blok 224)
+2^5 * 1024    4243.71         4.15616              8500                     4922942          1024.1     (blok 416)
+50 kroků:
+2^6 * 1024    1755.04         1.11828              6450                     7318632          1569.4     (blok 832)
+2^7 * 1024    6842.81         4.77553              4710                     6835182          1432.9     (blok 1024)
+2^8 * 1024    ~27371         19.06903              4650                     6847058          1435.4     (blok 1024)
+2^9 * 1024    ~109485        66.96348              5300                     7799289          1635.0     (blok 1024)
+2^10 * 1024   ~437940       251.52875              5670                     8305496          1741.1     (blok 1024)
+
+Od jakého počtu částic se vyplatí počítat na grafické kartě?
+Pokud budeme počítat s desetinásobným zrychlením paralelní CPU verze, lze odhadnout, že se vyplatí počítat na GPU již od 256 částic
+
+Krok 5: bonus - srovnání grafických karet
+======================
+N            čas GPU 1 [s]    výkon 1 [MFLOPS]   čas GPU 2 [s]  výkon 2 [MFLOPS]
+2^1 * 1024     0.26798              297303         0.26138             304810    (blok 32)
+2^2 * 1024     0.48617              655585         0.48595             655882    (blok 64)
+2^3 * 1024     0.90723             1405362         0.88929            1433712    (blok 128)
+2^4 * 1024     1.91623             2692724         1.83090            2818220    (blok 224)
+2^5 * 1024     4.15616             4922942         4.07436            5021779    (blok 416)
+50 kroků:
+2^6 * 1024     1.11828             7318632         1.14646            7138740    (blok 832)
+2^7 * 1024     4.77553             6835182         4.93690            6611763    (blok 1024)
+2^8 * 1024    19.06903             6847058        14.73719            8859678    (blok 1024)
+2^9 * 1024    66.96348             7799289        49.00861           10656648    (blok 1024)
+2^10 * 1024  251.52875             8305496       195.78014           10670495    (blok 1024)
+
+===================================
+Měření naznačuje, že grafické karty na Karolíně jsou silnější, avšak to se projeví až při opravdu velkých vstupech

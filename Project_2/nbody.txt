@@ -1,0 +1,107 @@
+/**
+ * @file      main.cpp
+ *
+ * @author    Jiri Jaros \n
+ *            Faculty of Information Technology \n
+ *            Brno University of Technology \n
+ *            jarosjir@fit.vutbr.cz
+ *
+ * @brief     PCG Assignment 2
+ *            N-Body simulation in ACC
+ *
+ * @version   2021
+ *
+ * @date      11 November  2020, 11:22 (created) \n
+ * @date      16 November  2021, 15:09 (revised) \n
+ *
+ */
+
+
+
+Krok 1: základní implementace
+===============================================================================
+Velikost dat    	čas [s]
+     1024             0.156
+ 2 * 1024             0.301
+ 3 * 1024             0.397
+ 4 * 1024             0.548
+ 5 * 1024             0.653
+ 6 * 1024             0.784
+ 7 * 1024             0.914
+ 8 * 1024             1.055
+ 9 * 1024             1.172
+10 * 1024             1.299
+11 * 1024             1.563
+12 * 1024             1.619
+13 * 1024             1.752
+14 * 1024             1.921
+15 * 1024             2.018
+16 * 1024             2.152
+17 * 1024             2.320
+18 * 1024             2.428
+19 * 1024             2.558
+20 * 1024             2.721
+21 * 1024             2.951
+22 * 1024             3.095
+23 * 1024             3.243
+24 * 1024             3.434
+25 * 1024             3.530
+26 * 1024             3.679
+27 * 1024             3.851
+28 * 1024             3.964
+29 * 1024             4.132
+30 * 1024             4.273
+
+Vyskytla se nějaká anomálie v datech
+Pokud ano, vysvětlete:
+Ne
+
+Krok 2: optimalizace kódu
+===============================================================================
+Došlo ke zrychlení?
+ano
+Popište dva hlavní důvody:
+Menší overhead kernelů
+Zmenšený počet přístupů do globální paměti
+
+Porovnejte metriky s předchozím krokem:
+             Kernel  gld_transactions   gld_requested_throughput  gst_requested_throughput stall_exec_dependency  stall_memory_dependency inst_integer  inst_compute_ld_st  inst_executed
+                                               GB/s                      GB/s                            %                           %      
+calculate_collision_        88510080         148.473272                 0.154251                       36.26                       25.76    2831984640        2831769600      575157120
+calculate_gravitatio       147484800         105.379644                 0.054825                       52.16                       28.49    5191134720        4718991360     1312461120
+update_particle_116_           31680         196.601708               179.750133                        4.91                       66.35        522240            645120          55680
+_______________________________________________________________________________________________________________________________________________________________________________________
+calculate_velocity_3       118004160          78.306038               125.035276                       61.70                       13.51    5663262720        3775672320     1297800000
+
+
+Krok 3: Težiště
+===============================================================================
+Kolik kernelů je nutné použít k výpočtu?
+1
+Kolik další paměti jste museli naalokovat?
+0
+Jaké je zrychelní vůči sekveční verzi?
+(provedu to smyčkou #pragma acc parallel loop seq)
+Zdůvodněte:
+zanedbatelné, výpočet těžiště trvá příliš krátkou dobu.
+
+
+
+Krok 4: analýza výkonu
+================================================================================
+500 kroků:
+N        čas CPU [s]    čas GPU [s]    propustnost paměti [MB/s]    výkon [MFLOPS]    zrychlení [-]
+1024     0.93           0.144          22054                        90997             6
+2048     1.28           0.248          40065                        211377            5
+4096     1.303          0.404          88574                        519062            3
+8192     4.886          0.803          176524                       1044623           6
+16384    19.707         1.557          361727                       2155033           13
+32768    79.048         3.389          650788                       3960359           23
+50 kroků:
+65536    31.997         0.924          809534                       5810266           35
+131072   129.074        3.520          947928                       6100793           37
+
+Od jakého počtu částic se vyplatí počítat na grafické kartě?
+GPU verze se zřetelně vyplatí od více než 8192 částic
+
+===============================================================================
